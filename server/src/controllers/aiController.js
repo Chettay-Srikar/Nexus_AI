@@ -34,6 +34,10 @@ export const handleAICommandCenter = async (req, res) => {
   }
 };
 
+export const handleCommandCenter = async (req, res) => {
+  return handleAICommandCenter(req, res);
+};
+
 export const analyzeDocumentAI = async (req, res) => {
   try {
     const { title, file_type, content } = req.body;
@@ -70,6 +74,10 @@ export const analyzeDocumentAI = async (req, res) => {
   }
 };
 
+export const handleDocumentIntelligence = async (req, res) => {
+  return analyzeDocumentAI(req, res);
+};
+
 export const analyzeMeetingAI = async (req, res) => {
   try {
     const { title, transcript } = req.body;
@@ -103,4 +111,8 @@ export const analyzeMeetingAI = async (req, res) => {
     console.error('Meeting AI Error:', err);
     return res.status(500).json({ success: false, message: 'Meeting analysis failed', error: err.message });
   }
+};
+
+export const handleMeetingIntelligence = async (req, res) => {
+  return analyzeMeetingAI(req, res);
 };

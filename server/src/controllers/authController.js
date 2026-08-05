@@ -162,11 +162,33 @@ export const register = async (req, res) => {
   }
 };
 
-export const getCurrentUser = async (req, res) => {
+export const getMe = async (req, res) => {
   return res.json({
     success: true,
     data: {
       user: req.user
     }
   });
+};
+
+export const getProfile = async (req, res) => {
+  return getMe(req, res);
+};
+
+export const updateProfile = async (req, res) => {
+  try {
+    const { name, department } = req.body;
+    return res.json({
+      success: true,
+      data: {
+        user: { ...req.user, name: name || req.user?.name, department: department || req.user?.department }
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to update profile' });
+  }
+};
+
+export const logout = async (req, res) => {
+  return res.json({ success: true, message: 'Logged out successfully' });
 };

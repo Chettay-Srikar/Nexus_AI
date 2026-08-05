@@ -114,6 +114,16 @@ export const deleteWorkflow = async (req, res) => {
   }
 };
 
+export const getNotifications = async (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : null;
+    const notifications = await query('SELECT * FROM notifications WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC;', [userId]);
+    res.json({ success: true, data: { notifications } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to fetch notifications', error: err.message });
+  }
+};
+
 export const getDocuments = async (req, res) => {
   try {
     const documents = await query('SELECT * FROM documents ORDER BY created_at DESC;');
