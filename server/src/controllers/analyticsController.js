@@ -37,6 +37,10 @@ export const getDashboardAnalytics = async (req, res) => {
   }
 };
 
+export const getEnterpriseAnalytics = async (req, res) => {
+  return getDashboardAnalytics(req, res);
+};
+
 export const getWorkflows = async (req, res) => {
   try {
     const workflows = await query('SELECT * FROM workflows ORDER BY created_at DESC;');
