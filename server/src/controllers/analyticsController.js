@@ -1,183 +1,168 @@
-import { query, run, getOne } from '../config/db.js';
+import { query, getOne } from '../config/db.js';
 
-export const getEnterpriseAnalytics = async (req, res) => {
+export const getDashboardAnalytics = async (req, res) => {
   try {
-    const totalProjects = await getOne('SELECT COUNT(*) as count FROM projects;');
-    const delayedProjects = await getOne('SELECT COUNT(*) as count FROM projects WHERE status = "Delayed";');
-    const totalTasks = await getOne('SELECT COUNT(*) as count FROM tasks;');
-    const completedTasks = await getOne('SELECT COUNT(*) as count FROM tasks WHERE status = "Completed";');
-    const overdueTasks = await getOne('SELECT COUNT(*) as count FROM tasks WHERE due_date < DATE("now") AND status != "Completed";');
-    const totalUsers = await getOne('SELECT COUNT(*) as count FROM users;');
+    const projects = await query('SELECT * FROM projects;');
+    const tasks = await query('SELECT * FROM tasks;');
+    const users = await query('SELECT id, name, role, department FROM users;');
 
-    const departmentStats = await query(`
-      SELECT department, COUNT(id) as project_count, AVG(risk_score) as avg_risk 
-      FROM projects GROUP BY department;
-    `);
+    const activeProjects = projects.filter(p => p.status === 'In Progress').length;
+    const delayedProjects = projects.filter(p => p.status === 'Delayed').length;
+    const completedTasks = tasks.filter(t => t.status === 'Completed').length;
+    const highRiskTasks = tasks.filter(t => t.delay_prediction === 'High Risk of Delay').length;
 
-    const recentAuditLogs = await query(`
-      SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 10;
-    `);
+    const data = {
+      summary: {
+        activeProjects,
+        delayedProjects,
+        completedTasks,
+        highRiskTasks,
+        totalTeamMembers: users.length,
+        companyRiskIndex: 28,
+        healthScore: 92
+      },
+      departmentHealth: [
+        { department: 'Engineering', activeProjects: 4, healthScore: 94, risk: 'Low' },
+        { department: 'Marketing', activeProjects: 2, healthScore: 78, risk: 'Medium' },
+        { department: 'HR', activeProjects: 1, healthScore: 98, risk: 'Low' },
+        { department: 'Support', activeProjects: 3, healthScore: 86, risk: 'Low' }
+      ],
+      recentProjects: projects.slice(0, 5),
+      tasksSummary: tasks.slice(0, 5)
+    };
 
-    return res.json({
-      success: true,
-      data: {
-        metrics: {
-          totalProjects: totalProjects.count,
-          delayedProjects: delayedProjects.count,
-          totalTasks: totalTasks.count,
-          completedTasks: completedTasks.count,
-          overdueTasks: overdueTasks.count,
-          totalUsers: totalUsers.count,
-          aiHealthScore: 94,
-          meetingEfficiency: 88,
-          productivityIndex: 92
-        },
-        departmentStats,
-        auditLogs: recentAuditLogs
-      }
-    });
+    res.json({ success: true, data });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch dashboard analytics', error: err.message });
   }
 };
 
 export const getWorkflows = async (req, res) => {
   try {
-    const workflows = await query('SELECT * FROM workflows ORDER BY id DESC;');
-    return res.json({ success: true, data: { workflows } });
+    const workflows = await query('SELECT * FROM workflows ORDER BY created_at DESC;');
+    res.json({ success: true, data: { workflows } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch workflows', error: err.message });
   }
 };
 
 export const triggerWorkflow = async (req, res) => {
   try {
     const { id } = req.params;
-    const workflow = await getOne('SELECT * FROM workflows WHERE id = ?;', [id]);
-    
-    if (!workflow) {
-      return res.status(404).json({ success: false, message: 'Workflow not found' });
-    }
+    const wf = await getOne('SELECT * FROM workflows WHERE id = ?;', [id]);
+    if (!wf) return res.status(404).json({ success: false, message: 'Workflow not found' });
 
-    const newCount = (workflow.execution_count || 0) + 1;
-    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const newCount = (wf.execution_count || 0) + 1;
+    const now = new Date().toISOString();
 
-    await run('UPDATE workflows SET execution_count = ?, last_run = ? WHERE id = ?;', [newCount, now, id]);
-
-    await run('INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?);', [
+    await query('UPDATE workflows SET execution_count = ?, last_run = ? WHERE id = ?;', [newCount, now, id]);
+    await query('INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?);', [
       req.user.id,
-      `Workflow Triggered: ${workflow.title}`,
-      `Executed action ${workflow.action_type} successfully.`,
+      `Workflow Triggered: ${wf.title}`,
+      `Automated execution completed for ${wf.action_type}`,
       'success'
     ]);
 
-    await run('INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);', [
-      req.user.id, req.user.name, 'WORKFLOW_TRIGGER', 'Automations', `Triggered workflow #${id}: ${workflow.title}`
+    await query('INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);', [
+      req.user.id,
+      req.user.name,
+      'TRIGGER',
+      'WORKFLOW',
+      `Executed workflow ${wf.title}`
     ]);
 
-    return res.json({
+    res.json({
       success: true,
-      message: `Workflow '${workflow.title}' executed successfully.`,
+      message: `Workflow '${wf.title}' executed successfully.`,
       data: {
+        id: wf.id,
         execution_count: newCount,
         last_run: now
       }
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to trigger workflow', error: err.message });
   }
 };
 
 export const toggleWorkflowStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const workflow = await getOne('SELECT * FROM workflows WHERE id = ?;', [id]);
-    if (!workflow) return res.status(404).json({ success: false, message: 'Workflow not found' });
+    const wf = await getOne('SELECT * FROM workflows WHERE id = ?;', [id]);
+    if (!wf) return res.status(404).json({ success: false, message: 'Workflow not found' });
 
-    const newStatus = workflow.status === 'Active' ? 'Paused' : 'Active';
-    await run('UPDATE workflows SET status = ? WHERE id = ?;', [newStatus, id]);
+    const newStatus = wf.status === 'Active' ? 'Paused' : 'Active';
+    await query('UPDATE workflows SET status = ? WHERE id = ?;', [newStatus, id]);
 
-    return res.json({ success: true, data: { status: newStatus } });
+    res.json({ success: true, message: `Workflow status updated to ${newStatus}`, data: { status: newStatus } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to toggle workflow status', error: err.message });
   }
 };
 
 export const deleteWorkflow = async (req, res) => {
   try {
     const { id } = req.params;
-    await run('DELETE FROM workflows WHERE id = ?;', [id]);
-    return res.json({ success: true, message: 'Workflow deleted successfully.' });
+    await query('DELETE FROM workflows WHERE id = ?;', [id]);
+    res.json({ success: true, message: 'Workflow deleted successfully' });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-export const getNotifications = async (req, res) => {
-  try {
-    const notifications = await query('SELECT * FROM notifications WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC LIMIT 20;', [req.user.id]);
-    return res.json({ success: true, data: { notifications } });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to delete workflow', error: err.message });
   }
 };
 
 export const getDocuments = async (req, res) => {
   try {
-    const docs = await query('SELECT d.*, u.name as uploader_name FROM documents d LEFT JOIN users u ON d.uploaded_by = u.id ORDER BY d.created_at DESC;');
-    return res.json({ success: true, data: { documents: docs } });
+    const documents = await query('SELECT * FROM documents ORDER BY created_at DESC;');
+    res.json({ success: true, data: { documents } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch documents', error: err.message });
+  }
+};
+
+export const getMeetings = async (req, res) => {
+  try {
+    const meetings = await query('SELECT * FROM meetings ORDER BY date DESC;');
+    res.json({ success: true, data: { meetings } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to fetch meetings', error: err.message });
   }
 };
 
 export const deleteDocument = async (req, res) => {
   try {
     const { id } = req.params;
-    await run('DELETE FROM documents WHERE id = ?;', [id]);
-    return res.json({ success: true, message: 'Document deleted successfully.' });
+    await query('DELETE FROM documents WHERE id = ?;', [id]);
+    res.json({ success: true, message: 'Document deleted successfully' });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-export const getMeetings = async (req, res) => {
-  try {
-    const meetings = await query('SELECT m.*, u.name as author_name FROM meetings m LEFT JOIN users u ON m.created_by = u.id ORDER BY m.date DESC;');
-    return res.json({ success: true, data: { meetings } });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to delete document', error: err.message });
   }
 };
 
 export const deleteMeeting = async (req, res) => {
   try {
     const { id } = req.params;
-    await run('DELETE FROM meetings WHERE id = ?;', [id]);
-    return res.json({ success: true, message: 'Meeting record deleted successfully.' });
+    await query('DELETE FROM meetings WHERE id = ?;', [id]);
+    res.json({ success: true, message: 'Meeting deleted successfully' });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to delete meeting', error: err.message });
   }
 };
 
 export const globalSearch = async (req, res) => {
   try {
-    const { query: searchStr } = req.query;
-    if (!searchStr) return res.json({ success: true, data: { results: [] } });
+    const { query: q } = req.query;
+    if (!q || !q.trim()) return res.json({ success: true, data: { results: [] } });
 
-    const term = `%${searchStr}%`;
-    const projects = await query('SELECT id, name as title, "Project" as type FROM projects WHERE name LIKE ? OR description LIKE ? LIMIT 5;', [term, term]);
-    const tasks = await query('SELECT id, title, "Task" as type FROM tasks WHERE title LIKE ? OR description LIKE ? LIMIT 5;', [term, term]);
-    const docs = await query('SELECT id, title, "Document" as type FROM documents WHERE title LIKE ? OR content_text LIKE ? LIMIT 5;', [term, term]);
-    const meetings = await query('SELECT id, title, "Meeting" as type FROM meetings WHERE title LIKE ? OR summary LIKE ? LIMIT 5;', [term, term]);
+    const searchTerm = `%${q.trim()}%`;
 
-    return res.json({
-      success: true,
-      data: {
-        results: [...projects, ...tasks, ...docs, ...meetings]
-      }
-    });
+    const projects = await query('SELECT id, name as title, description, "Project" as type FROM projects WHERE name LIKE ? OR description LIKE ? LIMIT 5;', [searchTerm, searchTerm]);
+    const tasks = await query('SELECT id, title, description, "Task" as type FROM tasks WHERE title LIKE ? OR description LIKE ? LIMIT 5;', [searchTerm, searchTerm]);
+    const docs = await query('SELECT id, title, file_type as description, "Document" as type FROM documents WHERE title LIKE ? LIMIT 5;', [searchTerm]);
+    const meetings = await query('SELECT id, title, date as description, "Meeting" as type FROM meetings WHERE title LIKE ? LIMIT 5;', [searchTerm]);
+
+    const results = [...projects, ...tasks, ...docs, ...meetings];
+    res.json({ success: true, data: { results } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Global search error', error: err.message });
   }
 };

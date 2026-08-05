@@ -1,117 +1,105 @@
-import { query, run, getOne } from '../config/db.js';
+import { query, getOne } from '../config/db.js';
 
 export const getProjects = async (req, res) => {
   try {
-    const projects = await query(`
-      SELECT p.*, u.name as owner_name 
-      FROM projects p 
-      LEFT JOIN users u ON p.created_by = u.id
-      ORDER BY p.id DESC;
-    `);
-    return res.json({ success: true, data: { projects } });
+    const projects = await query('SELECT * FROM projects ORDER BY created_at DESC;');
+    res.json({ success: true, data: { projects } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch projects', error: err.message });
   }
 };
 
 export const getProjectById = async (req, res) => {
   try {
     const { id } = req.params;
-    const project = await getOne('SELECT p.*, u.name as owner_name FROM projects p LEFT JOIN users u ON p.created_by = u.id WHERE p.id = ?;', [id]);
+    const project = await getOne('SELECT * FROM projects WHERE id = ?;', [id]);
     if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
-    
-    const tasks = await query('SELECT t.*, u.name as assignee_name FROM tasks t LEFT JOIN users u ON t.assigned_to = u.id WHERE t.project_id = ?;', [id]);
-    return res.json({ success: true, data: { project, tasks } });
+    const tasks = await query('SELECT * FROM tasks WHERE project_id = ?;', [id]);
+    res.json({ success: true, data: { project, tasks } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch project details', error: err.message });
   }
 };
 
 export const createProject = async (req, res) => {
   try {
-    const { name, description, priority, budget, department, start_date, end_date } = req.body;
-    const result = await run(
-      `INSERT INTO projects (name, description, priority, budget, department, start_date, end_date, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-      [name, description, priority || 'Medium', budget || 0, department || req.user.department, start_date, end_date, req.user.id]
+    const { name, description, priority = 'Medium', status = 'In Progress', budget = 50000, department = 'Engineering' } = req.body;
+    const rows = await query(
+      `INSERT INTO projects (name, description, priority, status, budget, department, created_by) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *;`,
+      [name, description, priority, status, budget, department, req.user ? req.user.id : null]
     );
 
-    const newProject = await getOne('SELECT * FROM projects WHERE id = ?;', [result.lastID]);
-    
-    await run(`INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);`, [
-      req.user.id, req.user.name, 'PROJECT_CREATE', 'Projects', `Created project: ${name}`
+    const project = rows[0] || { name, description, priority, status, budget, department };
+
+    await query(`INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);`, [
+      req.user ? req.user.id : null,
+      req.user ? req.user.name : 'System',
+      'CREATE',
+      'PROJECT',
+      `Created project ${name}`
     ]);
 
-    return res.status(201).json({ success: true, data: { project: newProject } });
+    res.status(201).json({ success: true, message: 'Project created successfully', data: { project } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to create project', error: err.message });
   }
 };
 
 export const updateProject = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, priority, status, budget, department, progress, risk_score } = req.body;
-
-    const existing = await getOne('SELECT * FROM projects WHERE id = ?;', [id]);
-    if (!existing) return res.status(404).json({ success: false, message: 'Project not found' });
-
-    await run(
-      `UPDATE projects SET name = ?, description = ?, priority = ?, status = ?, budget = ?, department = ?, progress = ?, risk_score = ? WHERE id = ?;`,
-      [
-        name || existing.name,
-        description || existing.description,
-        priority || existing.priority,
-        status || existing.status,
-        budget !== undefined ? budget : existing.budget,
-        department || existing.department,
-        progress !== undefined ? progress : existing.progress,
-        risk_score !== undefined ? risk_score : existing.risk_score,
-        id
-      ]
+    const { name, description, priority, status, budget, department } = req.body;
+    await query(
+      `UPDATE projects SET name = ?, description = ?, priority = ?, status = ?, budget = ?, department = ? WHERE id = ?;`,
+      [name, description, priority, status, budget, department, id]
     );
+    const project = await getOne('SELECT * FROM projects WHERE id = ?;', [id]);
 
-    const updated = await getOne('SELECT * FROM projects WHERE id = ?;', [id]);
-
-    await run(`INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);`, [
-      req.user.id, req.user.name, 'PROJECT_UPDATE', 'Projects', `Updated project #${id}: ${updated.name}`
+    await query(`INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);`, [
+      req.user ? req.user.id : null,
+      req.user ? req.user.name : 'System',
+      'UPDATE',
+      'PROJECT',
+      `Updated project ${name}`
     ]);
 
-    return res.json({ success: true, data: { project: updated } });
+    res.json({ success: true, message: 'Project updated successfully', data: { project } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to update project', error: err.message });
   }
 };
 
 export const deleteProject = async (req, res) => {
   try {
     const { id } = req.params;
-    const project = await getOne('SELECT * FROM projects WHERE id = ?;', [id]);
-    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+    await query('DELETE FROM projects WHERE id = ?;', [id]);
 
-    await run('DELETE FROM projects WHERE id = ?;', [id]);
-
-    await run(`INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);`, [
-      req.user.id, req.user.name, 'PROJECT_DELETE', 'Projects', `Deleted project #${id}: ${project.name}`
+    await query(`INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);`, [
+      req.user ? req.user.id : null,
+      req.user ? req.user.name : 'System',
+      'DELETE',
+      'PROJECT',
+      `Deleted project ${id}`
     ]);
 
-    return res.json({ success: true, message: `Project '${project.name}' deleted successfully.` });
+    res.json({ success: true, message: 'Project deleted successfully' });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to delete project', error: err.message });
   }
 };
 
 export const getTasks = async (req, res) => {
   try {
     const tasks = await query(`
-      SELECT t.*, p.name as project_name, u.name as assignee_name, u.avatar_url as assignee_avatar
-      FROM tasks t
-      LEFT JOIN projects p ON t.project_id = p.id
-      LEFT JOIN users u ON t.assigned_to = u.id
-      ORDER BY t.due_date ASC;
+      SELECT t.*, p.name as project_name, u.name as assignee_name 
+      FROM tasks t 
+      LEFT JOIN projects p ON t.project_id = p.id 
+      LEFT JOIN users u ON t.assigned_to = u.id 
+      ORDER BY t.created_at DESC;
     `);
-    return res.json({ success: true, data: { tasks } });
+    res.json({ success: true, data: { tasks } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch tasks', error: err.message });
   }
 };
 
@@ -119,91 +107,69 @@ export const getTaskById = async (req, res) => {
   try {
     const { id } = req.params;
     const task = await getOne(`
-      SELECT t.*, p.name as project_name, u.name as assignee_name
-      FROM tasks t
-      LEFT JOIN projects p ON t.project_id = p.id
-      LEFT JOIN users u ON t.assigned_to = u.id
+      SELECT t.*, p.name as project_name, u.name as assignee_name 
+      FROM tasks t 
+      LEFT JOIN projects p ON t.project_id = p.id 
+      LEFT JOIN users u ON t.assigned_to = u.id 
       WHERE t.id = ?;
     `, [id]);
-
     if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
-
     const comments = await query(`
-      SELECT c.*, u.name as user_name, u.avatar_url 
+      SELECT c.*, u.name as user_name 
       FROM task_comments c 
       LEFT JOIN users u ON c.user_id = u.id 
       WHERE c.task_id = ? 
-      ORDER BY c.created_at DESC;
+      ORDER BY c.created_at ASC;
     `, [id]);
-
-    return res.json({ success: true, data: { task, comments } });
+    res.json({ success: true, data: { task, comments } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch task detail', error: err.message });
   }
 };
 
 export const createTask = async (req, res) => {
   try {
-    const { project_id, title, description, priority, due_date, assigned_to, estimated_hours } = req.body;
-    const risk_score = priority === 'Critical' ? 85 : priority === 'High' ? 60 : 25;
-    const delay_prediction = risk_score > 70 ? 'High Risk of Delay' : 'On Track';
+    const { project_id, title, description, priority = 'Medium', status = 'To Do', due_date, estimated_hours = 8 } = req.body;
 
-    const result = await run(
-      `INSERT INTO tasks (project_id, title, description, priority, due_date, assigned_to, estimated_hours, risk_score, delay_prediction) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-      [project_id, title, description, priority || 'Medium', due_date, assigned_to || req.user.id, estimated_hours || 8, risk_score, delay_prediction]
+    const delay_prediction = priority === 'Critical' || priority === 'High' ? 'High Risk of Delay' : 'On Track';
+
+    const rows = await query(
+      `INSERT INTO tasks (project_id, title, description, priority, status, due_date, assigned_to, estimated_hours, delay_prediction) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *;`,
+      [project_id, title, description, priority, status, due_date, req.user ? req.user.id : null, estimated_hours, delay_prediction]
     );
 
-    const newTask = await getOne('SELECT * FROM tasks WHERE id = ?;', [result.lastID]);
-    return res.status(201).json({ success: true, data: { task: newTask } });
+    const task = rows[0] || { title, priority, status };
+
+    res.status(201).json({ success: true, message: 'Task created successfully', data: { task } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to create task', error: err.message });
   }
 };
 
 export const updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, priority, status, due_date, assigned_to, estimated_hours } = req.body;
+    const { title, description, priority, status, due_date, estimated_hours } = req.body;
 
-    const existing = await getOne('SELECT * FROM tasks WHERE id = ?;', [id]);
-    if (!existing) return res.status(404).json({ success: false, message: 'Task not found' });
-
-    const risk_score = priority === 'Critical' ? 85 : priority === 'High' ? 60 : existing.risk_score;
-    const delay_prediction = risk_score > 70 ? 'High Risk of Delay' : 'On Track';
-
-    await run(
-      `UPDATE tasks SET title = ?, description = ?, priority = ?, status = ?, due_date = ?, assigned_to = ?, estimated_hours = ?, risk_score = ?, delay_prediction = ? WHERE id = ?;`,
-      [
-        title || existing.title,
-        description || existing.description,
-        priority || existing.priority,
-        status || existing.status,
-        due_date || existing.due_date,
-        assigned_to || existing.assigned_to,
-        estimated_hours !== undefined ? estimated_hours : existing.estimated_hours,
-        risk_score,
-        delay_prediction,
-        id
-      ]
+    await query(
+      `UPDATE tasks SET title = ?, description = ?, priority = ?, status = ?, due_date = ?, estimated_hours = ? WHERE id = ?;`,
+      [title, description, priority, status, due_date, estimated_hours, id]
     );
+    const task = await getOne('SELECT * FROM tasks WHERE id = ?;', [id]);
 
-    const updated = await getOne('SELECT * FROM tasks WHERE id = ?;', [id]);
-    return res.json({ success: true, data: { task: updated } });
+    res.json({ success: true, message: 'Task updated successfully', data: { task } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to update task', error: err.message });
   }
 };
 
 export const deleteTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const task = await getOne('SELECT * FROM tasks WHERE id = ?;', [id]);
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
-
-    await run('DELETE FROM tasks WHERE id = ?;', [id]);
-    return res.json({ success: true, message: `Task '${task.title}' deleted.` });
+    await query('DELETE FROM tasks WHERE id = ?;', [id]);
+    res.json({ success: true, message: 'Task deleted successfully' });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to delete task', error: err.message });
   }
 };
 
@@ -211,13 +177,11 @@ export const updateTaskStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-
-    await run('UPDATE tasks SET status = ? WHERE id = ?;', [status, id]);
-    const updated = await getOne('SELECT * FROM tasks WHERE id = ?;', [id]);
-
-    return res.json({ success: true, data: { task: updated } });
+    await query('UPDATE tasks SET status = ? WHERE id = ?;', [status, id]);
+    const task = await getOne('SELECT * FROM tasks WHERE id = ?;', [id]);
+    res.json({ success: true, message: 'Task status updated', data: { task } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to update task status', error: err.message });
   }
 };
 
@@ -225,19 +189,16 @@ export const addTaskComment = async (req, res) => {
   try {
     const { id } = req.params;
     const { comment } = req.body;
-    if (!comment) return res.status(400).json({ success: false, message: 'Comment is required' });
-
-    await run(`INSERT INTO task_comments (task_id, user_id, comment) VALUES (?, ?, ?);`, [id, req.user.id, comment]);
+    await query(`INSERT INTO task_comments (task_id, user_id, comment) VALUES (?, ?, ?);`, [id, req.user.id, comment]);
     const comments = await query(`
-      SELECT c.*, u.name as user_name, u.avatar_url 
+      SELECT c.*, u.name as user_name 
       FROM task_comments c 
       LEFT JOIN users u ON c.user_id = u.id 
       WHERE c.task_id = ? 
-      ORDER BY c.created_at DESC;
+      ORDER BY c.created_at ASC;
     `, [id]);
-
-    return res.status(201).json({ success: true, data: { comments } });
+    res.status(201).json({ success: true, message: 'Comment added', data: { comments } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Failed to add task comment', error: err.message });
   }
 };

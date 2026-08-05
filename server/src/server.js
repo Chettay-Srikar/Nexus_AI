@@ -1,5 +1,5 @@
 import app from './app.js';
-import { initDb } from './config/schema.js';
+import { initDb } from './config/db.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -8,7 +8,7 @@ async function startServer() {
     console.log('----------------------------------------------------');
     console.log('1. Loading Environment Variables...');
     console.log('2. Initializing Express Application & Security Middleware...');
-    
+
     console.log('3. Connecting Database & Verifying Schemas...');
     await initDb();
 
