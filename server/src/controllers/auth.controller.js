@@ -105,16 +105,24 @@ export const login = async (req, res) => {
   }
 };
 
-export const getProfile = async (req, res) => {
+export const logout = async (req, res) => {
+  return res.status(200).json({ success: true, message: 'Logged out successfully' });
+};
+
+export const getMe = async (req, res) => {
   try {
     const user = await getOne('SELECT id, name, email, role, department, avatar_url, phone, created_at FROM users WHERE id = ?;', [req.user.id]);
     return res.status(200).json({ success: true, data: { user } });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Error fetching profile' });
+    return res.status(500).json({ success: false, message: 'Error fetching user' });
   }
 };
 
-export const updatePassword = async (req, res) => {
+export const getProfile = async (req, res) => {
+  return getMe(req, res);
+};
+
+export const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     const user = await getOne('SELECT * FROM users WHERE id = ?;', [req.user.id]);
@@ -132,6 +140,10 @@ export const updatePassword = async (req, res) => {
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Error updating password' });
   }
+};
+
+export const updatePassword = async (req, res) => {
+  return changePassword(req, res);
 };
 
 export const updateProfile = async (req, res) => {
