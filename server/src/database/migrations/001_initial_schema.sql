@@ -1,94 +1,131 @@
 -- ======================================================
--- NEXUSAI ENTERPRISE SUPABASE POSTGRESQL PRODUCTION MIGRATION
--- Migration: 001_initial_schema.sql
+-- NEXUSAI ENTERPRISE POSTGRESQL PRODUCTION SCHEMA
+-- Database: Supabase PostgreSQL / Standard PostgreSQL 14+
+-- Migration File: 001_initial_schema.sql
 -- ======================================================
 
--- 1. EXTENSIONS & ENUMS
+-- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- Clean up existing types and tables if doing full reset
+DROP TABLE IF EXISTS system_settings CASCADE;
+DROP TABLE IF EXISTS activity_logs CASCADE;
+DROP TABLE IF EXISTS audit_logs CASCADE;
+DROP TABLE IF EXISTS analytics CASCADE;
+DROP TABLE IF EXISTS ai_messages CASCADE;
+DROP TABLE IF EXISTS ai_conversations CASCADE;
+DROP TABLE IF EXISTS knowledge_base CASCADE;
+DROP TABLE IF EXISTS notifications CASCADE;
+DROP TABLE IF EXISTS reports CASCADE;
+DROP TABLE IF EXISTS workflow_runs CASCADE;
+DROP TABLE IF EXISTS workflows CASCADE;
+DROP TABLE IF EXISTS document_analysis CASCADE;
+DROP TABLE IF EXISTS documents CASCADE;
+DROP TABLE IF EXISTS meeting_notes CASCADE;
+DROP TABLE IF EXISTS meetings CASCADE;
+DROP TABLE IF EXISTS task_comments CASCADE;
+DROP TABLE IF EXISTS tasks CASCADE;
+DROP TABLE IF EXISTS project_members CASCADE;
+DROP TABLE IF EXISTS projects CASCADE;
+DROP TABLE IF EXISTS profiles CASCADE;
+DROP TABLE IF EXISTS departments CASCADE;
+
+DROP TYPE IF EXISTS user_role CASCADE;
+DROP TYPE IF EXISTS project_status CASCADE;
+DROP TYPE IF EXISTS task_status CASCADE;
+DROP TYPE IF EXISTS priority_level CASCADE;
+DROP TYPE IF EXISTS risk_level CASCADE;
+
+-- 1. ENUM DEFINITIONS
 CREATE TYPE user_role AS ENUM ('Administrator', 'Executive', 'Manager', 'Employee');
 CREATE TYPE project_status AS ENUM ('Planning', 'In Progress', 'Delayed', 'Completed');
 CREATE TYPE task_status AS ENUM ('To Do', 'In Progress', 'Review', 'Completed');
 CREATE TYPE priority_level AS ENUM ('Low', 'Medium', 'High', 'Critical');
 CREATE TYPE risk_level AS ENUM ('Low', 'Medium', 'High', 'Critical');
 
--- 2. TABLES
+-- 2. TABLE DEFINITIONS
 
--- Table 1: profiles
-CREATE TABLE IF NOT EXISTS profiles (
+-- Table 1: departments
+CREATE TABLE departments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email TEXT UNIQUE NOT NULL,
-    full_name TEXT NOT NULL,
-    avatar_url TEXT,
-    phone TEXT,
-    role user_role DEFAULT 'Employee',
-    department_id UUID,
-    job_title TEXT,
-    timezone TEXT DEFAULT 'UTC',
-    language TEXT DEFAULT 'en',
-    status TEXT DEFAULT 'ACTIVE',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Table 2: departments
-CREATE TABLE IF NOT EXISTS departments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT UNIQUE NOT NULL,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    code VARCHAR(50) UNIQUE NOT NULL,
     description TEXT,
-    manager_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
-    budget NUMERIC(15, 2) DEFAULT 0.00,
-    location TEXT,
+    manager_id UUID,
+    budget NUMERIC(15, 2) DEFAULT 0.00 CHECK (budget >= 0),
+    head_count INT DEFAULT 1 CHECK (head_count >= 0),
+    location VARCHAR(255) DEFAULT 'Headquarters',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Add Foreign Key constraint for department_id in profiles after departments table creation
-ALTER TABLE profiles ADD CONSTRAINT fk_profiles_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL;
+-- Table 2: profiles (Users)
+CREATE TABLE profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255) NOT NULL,
+    avatar_url TEXT,
+    phone VARCHAR(50) DEFAULT '+1 (555) 019-2831',
+    role user_role DEFAULT 'Employee',
+    department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
+    job_title VARCHAR(255) DEFAULT 'Software Engineer',
+    timezone VARCHAR(100) DEFAULT 'UTC',
+    language VARCHAR(10) DEFAULT 'en',
+    status VARCHAR(50) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add manager FK constraint to departments
+ALTER TABLE departments ADD CONSTRAINT fk_departments_manager FOREIGN KEY (manager_id) REFERENCES profiles(id) ON DELETE SET NULL;
 
 -- Table 3: projects
-CREATE TABLE IF NOT EXISTS projects (
+CREATE TABLE projects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
+    name VARCHAR(255) NOT NULL,
     description TEXT,
     department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
     manager_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
     status project_status DEFAULT 'In Progress',
     priority priority_level DEFAULT 'Medium',
-    budget NUMERIC(15, 2) DEFAULT 0.00,
+    budget NUMERIC(15, 2) DEFAULT 0.00 CHECK (budget >= 0),
     start_date DATE,
     end_date DATE,
-    completion_percentage INT DEFAULT 0,
-    risk_score INT DEFAULT 15,
-    ai_health_score INT DEFAULT 94,
+    completion_percentage INT DEFAULT 0 CHECK (completion_percentage BETWEEN 0 AND 100),
+    risk_score INT DEFAULT 15 CHECK (risk_score BETWEEN 0 AND 100),
+    ai_health_score INT DEFAULT 94 CHECK (ai_health_score BETWEEN 0 AND 100),
+    created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 4: project_members
-CREATE TABLE IF NOT EXISTS project_members (
+CREATE TABLE project_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-    role TEXT DEFAULT 'Member',
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    role VARCHAR(100) DEFAULT 'Member',
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(project_id, user_id)
+    CONSTRAINT uq_project_user UNIQUE (project_id, user_id)
 );
 
 -- Table 5: tasks
-CREATE TABLE IF NOT EXISTS tasks (
+CREATE TABLE tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
     description TEXT,
     assigned_to UUID REFERENCES profiles(id) ON DELETE SET NULL,
     priority priority_level DEFAULT 'Medium',
     status task_status DEFAULT 'To Do',
-    estimated_hours NUMERIC(6, 2) DEFAULT 8.00,
-    actual_hours NUMERIC(6, 2) DEFAULT 0.00,
+    estimated_hours NUMERIC(6, 2) DEFAULT 8.00 CHECK (estimated_hours >= 0),
+    actual_hours NUMERIC(6, 2) DEFAULT 0.00 CHECK (actual_hours >= 0),
     risk_level risk_level DEFAULT 'Low',
-    ai_priority_score INT DEFAULT 50,
+    risk_score INT DEFAULT 10 CHECK (risk_score BETWEEN 0 AND 100),
+    ai_priority_score INT DEFAULT 50 CHECK (ai_priority_score BETWEEN 0 AND 100),
+    delay_prediction VARCHAR(255) DEFAULT 'On Track',
     deadline DATE,
     completed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -96,31 +133,32 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 -- Table 6: task_comments
-CREATE TABLE IF NOT EXISTS task_comments (
+CREATE TABLE task_comments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    task_id UUID REFERENCES tasks(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+    task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     comment TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 7: meetings
-CREATE TABLE IF NOT EXISTS meetings (
+CREATE TABLE meetings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title TEXT NOT NULL,
+    title VARCHAR(255) NOT NULL,
     department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
     host_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
     meeting_date TIMESTAMP WITH TIME ZONE NOT NULL,
-    duration INT DEFAULT 30, -- minutes
+    duration INT DEFAULT 30 CHECK (duration > 0),
     transcript TEXT,
-    status TEXT DEFAULT 'Completed',
+    status VARCHAR(50) DEFAULT 'Completed',
+    created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 8: meeting_notes
-CREATE TABLE IF NOT EXISTS meeting_notes (
+CREATE TABLE meeting_notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    meeting_id UUID REFERENCES meetings(id) ON DELETE CASCADE,
+    meeting_id UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
     summary TEXT,
     key_decisions JSONB DEFAULT '[]'::jsonb,
     action_items JSONB DEFAULT '[]'::jsonb,
@@ -132,22 +170,25 @@ CREATE TABLE IF NOT EXISTS meeting_notes (
 );
 
 -- Table 9: documents
-CREATE TABLE IF NOT EXISTS documents (
+CREATE TABLE documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     uploaded_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
     file_url TEXT,
-    file_type TEXT NOT NULL,
+    file_type VARCHAR(50) NOT NULL,
     file_size INT DEFAULT 0,
-    status TEXT DEFAULT 'PROCESSED',
+    content_text TEXT,
+    summary TEXT,
+    status VARCHAR(50) DEFAULT 'PROCESSED',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 10: document_analysis
-CREATE TABLE IF NOT EXISTS document_analysis (
+CREATE TABLE document_analysis (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     summary TEXT,
     entities JSONB DEFAULT '[]'::jsonb,
     action_items JSONB DEFAULT '[]'::jsonb,
@@ -158,129 +199,154 @@ CREATE TABLE IF NOT EXISTS document_analysis (
 );
 
 -- Table 11: workflows
-CREATE TABLE IF NOT EXISTS workflows (
+CREATE TABLE workflows (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workflow_name TEXT NOT NULL,
+    workflow_name VARCHAR(255) NOT NULL,
     description TEXT,
-    trigger TEXT NOT NULL,
-    status TEXT DEFAULT 'Active',
+    trigger VARCHAR(255) NOT NULL,
+    action_type VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'Active',
+    last_run TIMESTAMP WITH TIME ZONE,
+    execution_count INT DEFAULT 0 CHECK (execution_count >= 0),
     created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 12: workflow_runs
-CREATE TABLE IF NOT EXISTS workflow_runs (
+CREATE TABLE workflow_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workflow_id UUID REFERENCES workflows(id) ON DELETE CASCADE,
-    status TEXT DEFAULT 'SUCCESS',
-    execution_time INT DEFAULT 120, -- ms
+    workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    status VARCHAR(50) DEFAULT 'SUCCESS',
+    execution_time INT DEFAULT 120,
     logs JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 13: reports
-CREATE TABLE IF NOT EXISTS reports (
+CREATE TABLE reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     generated_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
-    report_type TEXT NOT NULL,
-    title TEXT NOT NULL,
+    report_type VARCHAR(100) NOT NULL,
+    title VARCHAR(255) NOT NULL,
     content JSONB DEFAULT '{}'::jsonb,
     generated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 14: notifications
-CREATE TABLE IF NOT EXISTS notifications (
+CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
+    title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
+    type VARCHAR(50) DEFAULT 'info',
     priority priority_level DEFAULT 'Medium',
     read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 15: knowledge_base
-CREATE TABLE IF NOT EXISTS knowledge_base (
+CREATE TABLE knowledge_base (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title TEXT NOT NULL,
+    title VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
-    category TEXT NOT NULL,
-    department TEXT NOT NULL,
+    category VARCHAR(100) NOT NULL,
+    department VARCHAR(100) NOT NULL,
+    tags TEXT,
     created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 16: ai_conversations
-CREATE TABLE IF NOT EXISTS ai_conversations (
+CREATE TABLE ai_conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 17: ai_messages
-CREATE TABLE IF NOT EXISTS ai_messages (
+CREATE TABLE ai_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    conversation_id UUID REFERENCES ai_conversations(id) ON DELETE CASCADE,
-    sender TEXT NOT NULL, -- 'user' or 'ai'
+    conversation_id UUID NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
+    sender VARCHAR(50) NOT NULL CHECK (sender IN ('user', 'ai')),
     message TEXT NOT NULL,
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 18: analytics
-CREATE TABLE IF NOT EXISTS analytics (
+CREATE TABLE analytics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    department TEXT NOT NULL,
-    metric_name TEXT NOT NULL,
+    department VARCHAR(100) NOT NULL,
+    metric_name VARCHAR(100) NOT NULL,
     metric_value NUMERIC(15, 4) NOT NULL,
     recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 19: audit_logs
-CREATE TABLE IF NOT EXISTS audit_logs (
+CREATE TABLE audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
-    action TEXT NOT NULL,
-    resource TEXT NOT NULL,
+    user_name VARCHAR(255),
+    action VARCHAR(100) NOT NULL,
+    resource VARCHAR(100) NOT NULL,
     resource_id UUID,
-    ip_address TEXT,
+    details TEXT,
+    ip_address VARCHAR(50),
     user_agent TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 20: activity_logs
-CREATE TABLE IF NOT EXISTS activity_logs (
+CREATE TABLE activity_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-    activity TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    activity VARCHAR(255) NOT NULL,
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table 21: system_settings
-CREATE TABLE IF NOT EXISTS system_settings (
+CREATE TABLE system_settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    setting_key TEXT UNIQUE NOT NULL,
+    setting_key VARCHAR(255) UNIQUE NOT NULL,
     setting_value JSONB NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. INDEXES FOR HIGH PERFORMANCE QUERIES
-CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
-CREATE INDEX IF NOT EXISTS idx_profiles_department ON profiles(department_id);
-CREATE INDEX IF NOT EXISTS idx_projects_department ON projects(department_id);
-CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
-CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_assigned TO tasks(assigned_to);
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
-CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(meeting_date);
-CREATE INDEX IF NOT EXISTS idx_documents_uploaded_by ON documents(uploaded_by);
-CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read);
-CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
+-- 3. INDEXES FOR OPTIMIZED JOINS AND QUERIES
+CREATE INDEX idx_profiles_email ON profiles(email);
+CREATE INDEX idx_profiles_department ON profiles(department_id);
+CREATE INDEX idx_profiles_role ON profiles(role);
+CREATE INDEX idx_projects_department ON projects(department_id);
+CREATE INDEX idx_projects_status ON projects(status);
+CREATE INDEX idx_tasks_project ON tasks(project_id);
+CREATE INDEX idx_tasks_assigned ON tasks(assigned_to);
+CREATE INDEX idx_tasks_status ON tasks(status);
+CREATE INDEX idx_tasks_deadline ON tasks(deadline);
+CREATE INDEX idx_task_comments_task ON task_comments(task_id);
+CREATE INDEX idx_meetings_department ON meetings(department_id);
+CREATE INDEX idx_meetings_date ON meetings(meeting_date);
+CREATE INDEX idx_documents_department ON documents(department_id);
+CREATE INDEX idx_documents_uploaded_by ON documents(uploaded_by);
+CREATE INDEX idx_notifications_user_read ON notifications(user_id, read);
+CREATE INDEX idx_audit_created ON audit_logs(created_at);
 
--- 4. ROW-LEVEL SECURITY (RLS) POLICIES
+-- 4. AUTOMATED UPDATED_AT TRIGGER FUNCTION
+CREATE OR REPLACE FUNCTION update_timestamp_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_departments_timestamp BEFORE UPDATE ON departments FOR EACH ROW EXECUTE FUNCTION update_timestamp_column();
+CREATE TRIGGER update_profiles_timestamp BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION update_timestamp_column();
+CREATE TRIGGER update_projects_timestamp BEFORE UPDATE ON projects FOR EACH ROW EXECUTE FUNCTION update_timestamp_column();
+CREATE TRIGGER update_tasks_timestamp BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION update_timestamp_column();
+
+-- 5. ROW-LEVEL SECURITY (RLS) POLICIES FOR SUPABASE
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE departments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
@@ -291,29 +357,7 @@ ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Basic RLS Policies
-CREATE POLICY "Public Profiles are viewable by authenticated users" ON profiles FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "Authenticated users can view profiles" ON profiles FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
-
--- 5. DATABASE VIEWS
-CREATE OR REPLACE VIEW project_summary_view AS
-SELECT 
-    p.id as project_id,
-    p.name as project_name,
-    p.status,
-    p.risk_score,
-    p.completion_percentage,
-    d.name as department_name,
-    COUNT(t.id) as total_tasks,
-    SUM(CASE WHEN t.status = 'Completed' THEN 1 ELSE 0 END) as completed_tasks
-FROM projects p
-LEFT JOIN departments d ON p.department_id = d.id
-LEFT JOIN tasks t ON p.id = t.project_id
-GROUP BY p.id, d.name;
-
-CREATE OR REPLACE VIEW analytics_dashboard_view AS
-SELECT 
-    (SELECT COUNT(*) FROM profiles) as total_users,
-    (SELECT COUNT(*) FROM projects WHERE status = 'In Progress') as active_projects,
-    (SELECT COUNT(*) FROM tasks WHERE status != 'Completed') as pending_tasks,
-    (SELECT COUNT(*) FROM documents) as total_documents;
+CREATE POLICY "Authenticated users can view projects" ON projects FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "Managers can insert projects" ON projects FOR INSERT WITH CHECK (auth.role() = 'authenticated');
