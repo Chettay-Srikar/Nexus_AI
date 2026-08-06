@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { register, login, getMe, updateProfile } from '../controllers/authController.js';
-import { handleCommandCenter, handleDocumentIntelligence, handleMeetingIntelligence, getAIConversations, getAIConversationById, deleteAIConversation } from '../controllers/aiController.js';
+import { handleCommandCenter, handleDocumentIntelligence, handleMeetingIntelligence, getAIConversations, getAIConversationById, deleteAIConversation, handleGenerateWorkflow } from '../controllers/aiController.js';
 import { getProjects, createProject, updateProject, deleteProject, getTasks, createTask, updateTask, deleteTask, updateTaskStatus, addTaskComment, getProjectById, getTaskById } from '../controllers/projectController.js';
 import { getEnterpriseAnalytics, getWorkflows, triggerWorkflow, toggleWorkflowStatus, deleteWorkflow, getNotifications, getDocuments, deleteDocument, getMeetings, deleteMeeting, globalSearch } from '../controllers/analyticsController.js';
 import { getMeetingById, getDocumentById, getKnowledgeItems, getUsers, getDepartments } from '../controllers/extendedController.js';
