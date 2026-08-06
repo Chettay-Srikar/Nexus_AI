@@ -19,31 +19,24 @@ app.set('trust proxy', 1);
 
 // Security & Base Middleware
 app.use(helmet());
-app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://nexus-ai-topaz-eight.vercel.app"
-  ],
-  credentials: true
-}));
+app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('dev'));
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    service: 'NexusAI Enterprise Backend API',
-    environment: process.env.NODE_ENV || 'development',
-    timestamp: new Date().toISOString()
-  });
-});
+// Health check endpoints
+app.get('/health', (req, res) => res.json({ status: 'ok', service: 'NexusAI Enterprise Backend API', timestamp: new Date().toISOString() }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'NexusAI Enterprise Backend API', timestamp: new Date().toISOString() }));
 
-// Register Modular API Endpoints
+// Register Modular API Endpoints (Support both /api/auth and /auth)
 app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
+
 app.use('/api/ai', aiRoutes);
-app.use('/api', apiRoutes); // Mounts projects, tasks, documents, meetings, workflows, analytics, reports
+app.use('/ai', aiRoutes);
+
+app.use('/api', apiRoutes);
+app.use('/', apiRoutes);
 
 // 404 & Global Error Handling
 app.use(notFoundHandler);
