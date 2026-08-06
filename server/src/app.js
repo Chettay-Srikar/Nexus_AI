@@ -15,6 +15,7 @@ import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.m
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Security & Base Middleware
 app.use(helmet());

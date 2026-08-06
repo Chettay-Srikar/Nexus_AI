@@ -11,25 +11,47 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
+// Validate Environment Variables
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://umrbybftcpbgfetyrwdc.supabase.co';
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtcmJ5YmZ0Y3BiZ2ZldHlyd2RjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDY3NDU2MDAsImV4cCI6MjAyMjMyMTYwMH0.placeholder';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
 
-// 1. Initialize Supabase Admin Client
-export const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false
-  }
+console.log("Environment Verification:", {
+  SUPABASE_URL: !!process.env.SUPABASE_URL,
+  SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
+  SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+  JWT_SECRET: !!process.env.JWT_SECRET,
+  GEMINI_API_KEY: !!process.env.GEMINI_API_KEY
 });
 
-// 2. Initialize PostgreSQL Direct Connection Pool (Fallback & Direct SQL Querying)
+// 1. Initialize Supabase Admin Client Safely
+let supabaseClient = null;
+try {
+  supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  });
+} catch (err) {
+  console.error("Supabase client initialization error:", err.message);
+}
+export const supabase = supabaseClient;
+
+// 2. Initialize PostgreSQL Direct Connection Pool
 const { Pool } = pg;
-const dbUrl = process.env.DATABASE_URL || `postgres://postgres:${process.env.SUPABASE_SERVICE_ROLE_KEY}@db.umrbybftcpbgfetyrwdc.supabase.co:5432/postgres`;
+const dbUrl = process.env.DATABASE_URL || `postgres://postgres:${SUPABASE_SERVICE_ROLE_KEY}@db.umrbybftcpbgfetyrwdc.supabase.co:5432/postgres`;
 
-export const pool = new Pool({
-  connectionString: dbUrl,
-  ssl: { rejectUnauthorized: false }
-});
+let pgPool = null;
+try {
+  pgPool = new Pool({
+    connectionString: dbUrl,
+    ssl: { rejectUnauthorized: false }
+  });
+} catch (err) {
+  console.error("PostgreSQL pool initialization error:", err.message);
+}
+export const pool = pgPool;
 
 // Helper to replace SQLite ? placeholders with PostgreSQL $1, $2... parameters
 const formatPgSql = (sql) => {

@@ -45,7 +45,16 @@ const DEMO_USERS = {
 
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    console.log("Login Request Body:", req.body);
+    console.log("Environment Status:", {
+      SUPABASE_URL: !!process.env.SUPABASE_URL,
+      SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
+      SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      JWT_SECRET: !!process.env.JWT_SECRET,
+      GEMINI_API_KEY: !!process.env.GEMINI_API_KEY
+    });
+
+    const { email, password } = req.body || {};
 
     if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Email and password are required' });
