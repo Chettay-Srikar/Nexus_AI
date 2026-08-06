@@ -55,33 +55,53 @@ export const AuthProvider = ({ children }) => {
   }, [token]);
 
   const login = async (email, password) => {
-    const res = await api.post('/auth/login', { email, password });
-    if (res.data?.success) {
-      const token = res.data.data?.token ?? res.data.token;
-      const user = res.data.data?.user ?? res.data.user;
+    try {
+      const res = await api.post('/auth/login', { email, password });
+      if (res.data?.success) {
+        const token = res.data.data?.token ?? res.data.token;
+        const user = res.data.data?.user ?? res.data.user;
 
-      setToken(token);
-      setUser(user);
+        setToken(token);
+        setUser(user);
 
-      localStorage.setItem("nexusai_token", token);
-      localStorage.setItem("nexusai_user", JSON.stringify(user));
+        localStorage.setItem("nexusai_token", token);
+        localStorage.setItem("nexusai_user", JSON.stringify(user));
+      }
+      return { success: true, ...res.data };
+    } catch (err) {
+      const status = err.response?.status || 500;
+      const message = err.response?.data?.message || err.response?.data?.error?.message || err.message || 'Authentication error';
+      return {
+        success: false,
+        status,
+        message
+      };
     }
-    return res.data;
   };
 
   const register = async (userData) => {
-    const res = await api.post('/auth/register', userData);
-    if (res.data?.success) {
-      const token = res.data.data?.token ?? res.data.token;
-      const user = res.data.data?.user ?? res.data.user;
+    try {
+      const res = await api.post('/auth/register', userData);
+      if (res.data?.success) {
+        const token = res.data.data?.token ?? res.data.token;
+        const user = res.data.data?.user ?? res.data.user;
 
-      setToken(token);
-      setUser(user);
+        setToken(token);
+        setUser(user);
 
-      localStorage.setItem("nexusai_token", token);
-      localStorage.setItem("nexusai_user", JSON.stringify(user));
+        localStorage.setItem("nexusai_token", token);
+        localStorage.setItem("nexusai_user", JSON.stringify(user));
+      }
+      return { success: true, ...res.data };
+    } catch (err) {
+      const status = err.response?.status || 500;
+      const message = err.response?.data?.message || err.response?.data?.error?.message || err.message || 'Registration error';
+      return {
+        success: false,
+        status,
+        message
+      };
     }
-    return res.data;
   };
 
   const logout = () => {

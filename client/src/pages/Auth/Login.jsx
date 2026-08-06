@@ -19,11 +19,33 @@ export const Login = () => {
 
     try {
       const res = await login(email, password);
-      if (res.success) {
+      if (res && res.success) {
         navigate('/dashboard');
+      } else {
+        const status = res?.status;
+        const msg = res?.message || 'Authentication failed';
+        if (status === 401) {
+          setError('Incorrect credentials. Please check your email and password.');
+        } else if (status === 400) {
+          setError(msg || 'Email and password are required.');
+        } else if (status === 403) {
+          setError('Access forbidden. Your account does not have permission.');
+        } else if (status === 404) {
+          setError('Authentication service route not found.');
+        } else if (status === 500) {
+          setError(`Server Error (500): ${msg}`);
+        } else {
+          setError(msg);
+        }
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Authentication failed. Please check your credentials.');
+      const status = err.response?.status;
+      const msg = err.response?.data?.message || err.response?.data?.error?.message || err.message;
+      if (status === 401) {
+        setError('Incorrect credentials. Please check your email and password.');
+      } else {
+        setError(`Server Error (${status || 500}): ${msg || 'Authentication error'}`);
+      }
     } finally {
       setLoading(false);
     }

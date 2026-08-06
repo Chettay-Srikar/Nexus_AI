@@ -51,15 +51,29 @@ export const login = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email and password are required' });
     }
 
-    // 1. Query Supabase profiles table
-    let { data: user, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('email', email)
-      .single();
+    const safeJwtSecret = process.env.JWT_SECRET || JWT_SECRET || 'nexusai_super_secret_jwt_key_2026';
 
-    // Fallback check against DEMO_USERS if table is empty or loading
-    if (error || !user) {
+    let user = null;
+
+    // 1. Safe Supabase profile query
+    try {
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', email)
+          .single();
+
+        if (data && !error) {
+          user = data;
+        }
+      }
+    } catch (e) {
+      console.warn("Supabase login query notice:", e.message);
+    }
+
+    // Fallback check against DEMO_USERS if table is empty or profile not found
+    if (!user) {
       if (DEMO_USERS[email]) {
         user = DEMO_USERS[email];
       } else {
@@ -67,40 +81,52 @@ export const login = async (req, res) => {
       }
     }
 
+    // 2. Validate password
     const isValidPassword = await bcrypt.compare(password, user.password_hash || DEMO_USERS[email]?.password_hash || '');
     if (!isValidPassword && password !== 'admin123' && password !== 'user123') {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    // Ensure matching profile row exists in Supabase profiles table for foreign key integrity
-    const { data: syncedProfile } = await supabase
-      .from('profiles')
-      .upsert([
-        {
-          id: user.id || 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-          email: user.email,
-          full_name: user.full_name || user.name || 'User',
-          role: user.role || 'Employee',
-          avatar_url: user.avatar_url,
-          password_hash: user.password_hash
-        }
-      ], { onConflict: 'email' })
-      .select()
-      .single();
+    // 3. Safe profile sync
+    try {
+      if (supabase) {
+        const { data: syncedProfile } = await supabase
+          .from('profiles')
+          .upsert([
+            {
+              id: user.id || 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+              email: user.email,
+              full_name: user.full_name || user.name || 'User',
+              role: user.role || 'Employee',
+              avatar_url: user.avatar_url,
+              password_hash: user.password_hash
+            }
+          ], { onConflict: 'email' })
+          .select()
+          .single();
 
-    if (syncedProfile) {
-      user = syncedProfile;
+        if (syncedProfile) {
+          user = syncedProfile;
+        }
+      }
+    } catch (e) {
+      console.warn("Profile sync notice:", e.message);
     }
 
-    await query(`INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);`, [
-      user.id,
-      user.full_name || user.name,
-      'LOGIN',
-      'AUTH',
-      `User ${email} logged in successfully`
-    ]);
+    // 4. Safe audit log insert
+    try {
+      await query(`INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);`, [
+        user.id,
+        user.full_name || user.name,
+        'LOGIN',
+        'AUTH',
+        `User ${email} logged in successfully`
+      ]);
+    } catch (e) {
+      console.warn("Audit log notice:", e.message);
+    }
 
-    console.log("JWT_SECRET used for SIGN:", JWT_SECRET);
+    // 5. Generate JWT token
     const token = jwt.sign(
       {
         id: user.id,
@@ -110,7 +136,7 @@ export const login = async (req, res) => {
         department: user.department || user.department_id || 'Engineering',
         avatar_url: user.avatar_url
       },
-      JWT_SECRET,
+      safeJwtSecret,
       { expiresIn: '7d' }
     );
 
@@ -129,8 +155,12 @@ export const login = async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Login error:', err);
-    return res.status(500).json({ success: false, message: 'Authentication error' });
+    console.error("Login Error:", err);
+    console.error(err.stack);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Internal server error during login'
+    });
   }
 };
 
@@ -142,25 +172,30 @@ export const register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Name, email, and password are required' });
     }
 
+    const safeJwtSecret = process.env.JWT_SECRET || JWT_SECRET || 'nexusai_super_secret_jwt_key_2026';
     const password_hash = await bcrypt.hash(password, 10);
 
-    // Insert into Supabase profiles table
-    const { data: newUser, error } = await supabase
-      .from('profiles')
-      .insert([
-        {
-          full_name: name,
-          email,
-          password_hash,
-          role,
-          avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`
-        }
-      ])
-      .select()
-      .single();
+    let newUser = null;
+    try {
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .insert([
+            {
+              full_name: name,
+              email,
+              password_hash,
+              role,
+              avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`
+            }
+          ])
+          .select()
+          .single();
 
-    if (error) {
-      console.warn('Supabase profile insert notice:', error.message);
+        if (data && !error) newUser = data;
+      }
+    } catch (e) {
+      console.warn('Supabase profile insert notice:', e.message);
     }
 
     const createdUser = newUser || {
@@ -172,13 +207,17 @@ export const register = async (req, res) => {
       avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`
     };
 
-    await query(`INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);`, [
-      createdUser.id,
-      name,
-      'REGISTER',
-      'USER',
-      `Registered user ${email}`
-    ]);
+    try {
+      await query(`INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);`, [
+        createdUser.id,
+        name,
+        'REGISTER',
+        'USER',
+        `Registered user ${email}`
+      ]);
+    } catch (e) {
+      console.warn("Audit log notice:", e.message);
+    }
 
     const token = jwt.sign(
       {
@@ -189,7 +228,7 @@ export const register = async (req, res) => {
         department: createdUser.department || department,
         avatar_url: createdUser.avatar_url
       },
-      JWT_SECRET,
+      safeJwtSecret,
       { expiresIn: '7d' }
     );
 
@@ -208,8 +247,12 @@ export const register = async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Registration error:', err);
-    return res.status(500).json({ success: false, message: 'Registration failed' });
+    console.error("Register Error:", err);
+    console.error(err.stack);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Internal server error during registration'
+    });
   }
 };
 
