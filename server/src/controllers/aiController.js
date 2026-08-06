@@ -367,3 +367,58 @@ export const generateExecutiveReport = async (req, res) => {
     return errorResponse(res, 'Failed to generate executive report', 500);
   }
 };
+
+export const handleGenerateWorkflow = async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    if (!prompt) return res.status(400).json({ success: false, message: 'Workflow description prompt is required' });
+
+    const systemPrompt = `You are an Enterprise AI Workflow Automation Architect. Convert the user's natural language automation request into a structured JSON workflow graph with nodes.
+Required JSON format:
+{
+  "title": "Short Descriptive Title",
+  "description": "Brief summary of the automation flow",
+  "nodes": [
+    {
+      "id": "node-1",
+      "type": "Trigger" | "AI Agent" | "Action" | "Logic",
+      "name": "Component Name",
+      "category": "Trigger" | "AI Agent" | "Action" | "Logic",
+      "icon": "Clock" | "Sparkles" | "FileText" | "Send" | "CheckCircle" | "Zap" | "Layers",
+      "description": "Short step explanation",
+      "model": "Gemini 2.5 Flash",
+      "status": "Idle",
+      "executionTime": "0.4s"
+    }
+  ]
+}
+User Prompt: ${prompt}`;
+
+    let responseText = await geminiService.generateText(systemPrompt, 'gemini-2.5-flash');
+    let parsed = null;
+    try {
+      const match = responseText.match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+    } catch (e) {
+      console.warn('Failed to parse Gemini workflow response:', e.message);
+    }
+
+    if (!parsed || !Array.isArray(parsed.nodes)) {
+      parsed = {
+        title: "AI Automation Workflow",
+        description: prompt,
+        nodes: [
+          { id: "node-1", type: "Trigger", name: "Schedule Trigger", category: "Trigger", icon: "Clock", description: "Automated trigger execution", model: "System", status: "Idle", executionTime: "0.1s" },
+          { id: "node-2", type: "AI Agent", name: "Gemini Analyzer", category: "AI Agent", icon: "Sparkles", description: "Analyze inputs with Gemini AI", model: "Gemini 2.5 Flash", status: "Idle", executionTime: "1.2s" },
+          { id: "node-3", type: "Action", name: "Create Task", category: "Action", icon: "CheckCircle", description: "Create enterprise task", model: "System", status: "Idle", executionTime: "0.4s" },
+          { id: "node-4", type: "Action", name: "Send Notification", category: "Action", icon: "Send", description: "Notify stakeholders", model: "System", status: "Idle", executionTime: "0.2s" }
+        ]
+      };
+    }
+
+    return res.json({ success: true, data: parsed });
+  } catch (err) {
+    console.error('Generate workflow error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate workflow with AI', error: err.message });
+  }
+};

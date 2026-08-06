@@ -25,6 +25,7 @@ router.get('/ai/conversations/:id', authenticateToken, getAIConversationById);
 router.delete('/ai/conversations/:id', authenticateToken, deleteAIConversation);
 router.post('/ai/document-intelligence', authenticateToken, handleDocumentIntelligence);
 router.post('/ai/meeting-intelligence', authenticateToken, handleMeetingIntelligence);
+router.post('/ai/generate-workflow', authenticateToken, handleGenerateWorkflow);
 
 // Project Routes
 router.get('/projects', authenticateToken, getProjects);
