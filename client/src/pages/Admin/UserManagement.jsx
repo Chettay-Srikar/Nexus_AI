@@ -12,7 +12,7 @@ export const UserManagement = () => {
   const fetchUsers = async () => {
     try {
       const res = await api.get('/users');
-      if (res.data.success) setUsers(res.data.users);
+      if (res.data?.success) setUsers(res.data.data?.users ?? res.data.users ?? []);
     } catch (err) {
       console.error('Error fetching users:', err);
     }
@@ -38,7 +38,7 @@ export const UserManagement = () => {
         </button>
       </div>
 
-      {/* Users Table */}
+      {/* Directory Table */}
       <div className="glass-panel p-6 rounded-2xl border border-gray-800 space-y-4">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-gray-300">
@@ -53,7 +53,7 @@ export const UserManagement = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/60">
-              {users.map((u) => (
+              {(Array.isArray(users) ? users : []).map((u) => (
                 <tr key={u.id} className="hover:bg-gray-800/30 transition">
                   <td className="p-3 font-semibold text-gray-100 flex items-center gap-2.5">
                     <img

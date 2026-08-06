@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { register, login, getMe, updateProfile } from '../controllers/authController.js';
-import { handleCommandCenter, handleDocumentIntelligence, handleMeetingIntelligence } from '../controllers/aiController.js';
+import { handleCommandCenter, handleDocumentIntelligence, handleMeetingIntelligence, getAIConversations, getAIConversationById, deleteAIConversation } from '../controllers/aiController.js';
 import { getProjects, createProject, updateProject, deleteProject, getTasks, createTask, updateTask, deleteTask, updateTaskStatus, addTaskComment, getProjectById, getTaskById } from '../controllers/projectController.js';
 import { getEnterpriseAnalytics, getWorkflows, triggerWorkflow, toggleWorkflowStatus, deleteWorkflow, getNotifications, getDocuments, deleteDocument, getMeetings, deleteMeeting, globalSearch } from '../controllers/analyticsController.js';
 import { getMeetingById, getDocumentById, getKnowledgeItems, getUsers, getDepartments } from '../controllers/extendedController.js';
@@ -20,6 +20,9 @@ router.put('/auth/profile', authenticateToken, updateProfile);
 
 // AI Intelligence Routes (Protected)
 router.post('/ai/command-center', authenticateToken, handleCommandCenter);
+router.get('/ai/conversations', authenticateToken, getAIConversations);
+router.get('/ai/conversations/:id', authenticateToken, getAIConversationById);
+router.delete('/ai/conversations/:id', authenticateToken, deleteAIConversation);
 router.post('/ai/document-intelligence', authenticateToken, handleDocumentIntelligence);
 router.post('/ai/meeting-intelligence', authenticateToken, handleMeetingIntelligence);
 

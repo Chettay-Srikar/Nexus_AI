@@ -12,7 +12,7 @@ export const DepartmentManagement = () => {
   const fetchDepartments = async () => {
     try {
       const res = await api.get('/departments');
-      if (res.data.success) setDepartments(res.data.departments);
+      if (res.data?.success) setDepartments(res.data.data?.departments ?? res.data.departments ?? []);
     } catch (err) {
       console.error('Error fetching departments:', err);
     }
@@ -40,7 +40,7 @@ export const DepartmentManagement = () => {
 
       {/* Departments Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {departments.map((dept) => (
+        {(Array.isArray(departments) ? departments : []).map((dept) => (
           <div key={dept.id} className="glass-panel p-6 rounded-2xl border border-gray-800 space-y-4 flex flex-col justify-between">
             <div className="space-y-2">
               <div className="flex items-center justify-between">

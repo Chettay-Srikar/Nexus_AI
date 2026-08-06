@@ -35,8 +35,8 @@ export const AuthProvider = ({ children }) => {
       if (token) {
         try {
           const res = await api.get('/auth/me');
-          if (res.data.success) {
-            const user = res.data.data.user;
+          if (res.data?.success) {
+            const user = res.data.data?.user ?? res.data.user;
 
             setUser(user);
             localStorage.setItem(
@@ -56,8 +56,9 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const res = await api.post('/auth/login', { email, password });
-    if (res.data.success) {
-      const { token, user } = res.data.data;
+    if (res.data?.success) {
+      const token = res.data.data?.token ?? res.data.token;
+      const user = res.data.data?.user ?? res.data.user;
 
       setToken(token);
       setUser(user);
@@ -70,8 +71,9 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     const res = await api.post('/auth/register', userData);
-    if (res.data.success) {
-      const { token, user } = res.data.data;
+    if (res.data?.success) {
+      const token = res.data.data?.token ?? res.data.token;
+      const user = res.data.data?.user ?? res.data.user;
 
       setToken(token);
       setUser(user);

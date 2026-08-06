@@ -35,27 +35,87 @@ export const AICommandCenter = () => {
   const [prompt, setPrompt] = useState('');
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState(null);
+  const [conversations, setConversations] = useState([]);
 
-  const [messages, setMessages] = useState([
-    {
-      sender: 'ai',
-      text: `### 👋 Welcome to NexusAI Command Center, **${user?.name}**!\n\nI am connected to your enterprise systems including **Engineering**, **HR**, **Marketing**, and **Support**.\n\nYou can ask me questions like:\n- *"Which projects are delayed?"*\n- *"Summarize today's executive meetings."*\n- *"What are our biggest departmental risks?"*\n- *"Who is overloaded with critical tasks this week?"*`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem("enterprise_ai_chat");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse saved chat history:", e);
+      }
     }
-  ]);
+    return [
+      {
+        sender: 'ai',
+        text: `### 👋 Welcome to NexusAI Command Center, **${user?.name || 'Executive'}**!\n\nI am connected to your enterprise systems including **Engineering**, **HR**, **Marketing**, and **Support**.\n\nYou can ask me questions like:\n- *"Which projects are delayed?"*\n- *"Summarize today's executive meetings."*\n- *"What are our biggest departmental risks?"*\n- *"Who is overloaded with critical tasks this week?"*`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ];
+  });
+
   const [loading, setLoading] = useState(false);
+
+  React.useEffect(() => {
+    localStorage.setItem("enterprise_ai_chat", JSON.stringify(messages));
+  }, [messages]);
+
+  React.useEffect(() => {
+    fetchConversations();
+  }, []);
+
+  const fetchConversations = async () => {
+    try {
+      const res = await api.get('/ai/conversations');
+      if (res.data?.success) {
+        setConversations(res.data.data?.conversations ?? []);
+      }
+    } catch (err) {
+      console.error('Fetch AI conversations error:', err);
+    }
+  };
+
+  const loadConversation = async (convId) => {
+    try {
+      setLoading(true);
+      const res = await api.get(`/ai/conversations/${convId}`);
+      if (res.data?.success) {
+        const msgs = (res.data.data?.messages ?? []).map(m => ({
+          sender: m.sender,
+          text: m.text,
+          timestamp: new Date(m.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }));
+        setMessages(msgs);
+        setActiveConversationId(convId);
+      }
+    } catch (err) {
+      console.error('Load conversation error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteConversation = async (e, convId) => {
+    e.stopPropagation();
+    try {
+      await api.delete(`/ai/conversations/${convId}`);
+      setConversations(prev => prev.filter(c => c.id !== convId));
+      if (activeConversationId === convId) {
+        setActiveConversationId(null);
+        handleClearHistory();
+      }
+    } catch (err) {
+      console.error('Delete conversation error:', err);
+    }
+  };
 
   const quickPrompts = [
     "Which projects are delayed?",
     "Summarize today's meetings.",
     "What are our biggest risks?",
     "Generate executive summary."
-  ];
-
-  const pinnedConversations = [
-    { title: 'Q3 Marketing Rebrand Risk Analysis', date: 'Yesterday' },
-    { title: 'Cloud Migration Contractor Headcount Review', date: '2 days ago' },
-    { title: 'SOC2 Audit Compliance Summary', date: 'Aug 03' }
   ];
 
   const handleCopyText = (text, idx) => {
@@ -65,7 +125,7 @@ export const AICommandCenter = () => {
   };
 
   const handleExportChat = () => {
-    const transcript = messages.map(m => `[${m.timestamp}] ${m.sender.toUpperCase()}:\n${m.text}\n`).join('\n---\n\n');
+    const transcript = (Array.isArray(messages) ? messages : []).map(m => `[${m.timestamp}] ${m.sender.toUpperCase()}:\n${m.text}\n`).join('\n---\n\n');
     const blob = new Blob([transcript], { type: 'text/markdown' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -75,18 +135,23 @@ export const AICommandCenter = () => {
   };
 
   const handleClearHistory = () => {
-    setMessages([
+    const initialMsg = [
       {
         sender: 'ai',
         text: `### 🤖 Conversation Cleared.\n\nAsk any enterprise question to start a fresh Gemini AI analysis session.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }
-    ]);
+    ];
+    setMessages(initialMsg);
+    setActiveConversationId(null);
+    localStorage.setItem("enterprise_ai_chat", JSON.stringify(initialMsg));
   };
 
   const handleSubmit = async (queryText) => {
     const query = queryText || prompt;
     if (!query.trim() || loading) return;
+
+    console.log("Sending prompt:", query);
 
     const userMsg = {
       sender: 'user',
@@ -99,13 +164,21 @@ export const AICommandCenter = () => {
     setLoading(true);
 
     try {
-      const res = await api.post('/ai/command-center', { prompt: query });
+      const res = await api.post('/ai/command-center', {
+        prompt: query,
+        conversationId: activeConversationId
+      });
       const aiData = res.data.data || res.data;
+      if (aiData.conversationId && !activeConversationId) {
+        setActiveConversationId(aiData.conversationId);
+        fetchConversations();
+      }
+
       const aiMsg = {
         sender: 'ai',
         text: aiData.text || aiData.answer || 'Query processed.',
         structuredData: aiData.structuredData,
-        source: aiData.source || 'gemini-1.5-flash',
+        source: aiData.source || 'gemini-2.5-flash',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages((prev) => [...prev, aiMsg]);
@@ -129,17 +202,37 @@ export const AICommandCenter = () => {
       {/* Pinned History Drawer Sidebar */}
       {showHistory && (
         <div className="w-64 glass-panel p-4 rounded-xl border border-gray-800 space-y-4 flex flex-col justify-between shrink-0">
-          <div className="space-y-3">
+          <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-12rem)]">
             <h3 className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Pin className="w-3.5 h-3.5 text-indigo-400" /> Pinned AI Chats
+              <Pin className="w-3.5 h-3.5 text-indigo-400" /> Saved AI Sessions
             </h3>
             <div className="space-y-2">
-              {pinnedConversations.map((c, i) => (
-                <div key={i} className="p-2.5 rounded-lg bg-gray-900/60 border border-gray-800 hover:border-gray-700 text-xs cursor-pointer transition">
-                  <p className="font-semibold text-gray-200 truncate">{c.title}</p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">{c.date}</p>
+              {(Array.isArray(conversations) ? conversations : []).map((c) => (
+                <div
+                  key={c.id}
+                  onClick={() => loadConversation(c.id)}
+                  className={`p-2.5 rounded-lg border text-xs cursor-pointer transition flex items-center justify-between group ${
+                    activeConversationId === c.id
+                      ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-200'
+                      : 'bg-gray-900/60 border-gray-800 hover:border-gray-700 text-gray-300'
+                  }`}
+                >
+                  <div className="truncate pr-2">
+                    <p className="font-semibold truncate">{c.title}</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{c.created_at ? new Date(c.created_at).toLocaleDateString() : 'Session'}</p>
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteConversation(e, c.id)}
+                    className="text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
+                    title="Delete Conversation"
+                  >
+                    🗑️
+                  </button>
                 </div>
               ))}
+              {conversations.length === 0 && (
+                <p className="text-[11px] text-gray-500 italic p-2 text-center">No saved sessions yet</p>
+              )}
             </div>
           </div>
           <button
@@ -147,7 +240,7 @@ export const AICommandCenter = () => {
             className="w-full py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold flex items-center justify-center gap-2 border border-gray-700 transition"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Clear Session</span>
+            <span>New Session</span>
           </button>
         </div>
       )}

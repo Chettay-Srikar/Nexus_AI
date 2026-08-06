@@ -3,11 +3,18 @@
   "version": "1.0.0",
   "description": "NexusAI Enterprise AI SaaS Platform Root Workspace",
   "private": true,
+  "type": "module",
+  "workspaces": [
+    "server",
+    "client"
+  ],
   "scripts": {
+    "dev": "npm --prefix client run dev",
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
+    "start": "node server/src/server.js",
     "build:server": "npm --prefix server run build",
     "build:client": "npm --prefix client run build",
-    "build": "npm run build:server && npm run build:client"
+    "build": "npm run build:client"
   }
 }

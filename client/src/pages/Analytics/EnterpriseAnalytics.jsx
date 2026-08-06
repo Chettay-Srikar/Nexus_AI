@@ -34,7 +34,7 @@ export const EnterpriseAnalytics = () => {
   const fetchAnalytics = async () => {
     try {
       const res = await api.get('/analytics');
-      if (res.data.success) setMetrics(res.data);
+      if (res.data?.success) setMetrics(res.data?.data ?? res.data);
     } catch (err) {
       console.error('Error fetching analytics:', err);
     }
@@ -109,7 +109,7 @@ export const EnterpriseAnalytics = () => {
           <h3 className="text-sm font-bold text-gray-200 uppercase tracking-wider">Departmental Task Breakdown</h3>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={metrics?.departmentStats || []}>
+              <BarChart data={Array.isArray(metrics?.departmentStats) ? metrics.departmentStats : []}>
                 <XAxis dataKey="department" stroke="#9ca3af" fontSize={12} />
                 <YAxis stroke="#9ca3af" fontSize={12} />
                 <Tooltip contentStyle={{ backgroundColor: '#111827', borderColor: '#374151', color: '#fff' }} />

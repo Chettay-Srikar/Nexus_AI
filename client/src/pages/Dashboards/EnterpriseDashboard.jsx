@@ -1,31 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
-import { 
-  Briefcase, 
-  CheckSquare, 
-  AlertTriangle, 
-  TrendingUp, 
-  Users, 
-  Zap, 
-  ShieldAlert, 
+import {
+  Briefcase,
+  CheckSquare,
+  AlertTriangle,
+  TrendingUp,
+  Users,
+  Zap,
+  ShieldAlert,
   Activity,
   Plus,
   Clock,
   ChevronRight
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  PieChart, 
-  Pie, 
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  PieChart,
+  Pie,
   Cell,
   LineChart,
-  Line 
+  Line
 } from 'recharts';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444'];
@@ -43,8 +43,14 @@ export const EnterpriseDashboard = () => {
           api.get('/analytics'),
           api.get('/projects')
         ]);
-        if (analRes.data.success) setAnalytics(analRes.data);
-        if (projRes.data.success) setProjects(projRes.data.projects);
+        console.log("Analytics Response:", analRes.data);
+        console.log("Projects Response:", projRes.data);
+        if (analRes.data?.success) {
+          setAnalytics(analRes.data?.data ?? analRes.data);
+        }
+        if (projRes.data?.success) {
+          setProjects(projRes.data?.data?.projects ?? projRes.data?.projects ?? []);
+        }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
       } finally {
@@ -106,7 +112,7 @@ export const EnterpriseDashboard = () => {
           </h3>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={analytics?.departmentStats || []}>
+              <BarChart data={Array.isArray(analytics?.departmentStats) ? analytics.departmentStats : []}>
                 <XAxis dataKey="department" stroke="#9ca3af" fontSize={12} />
                 <YAxis stroke="#9ca3af" fontSize={12} />
                 <Tooltip contentStyle={{ backgroundColor: '#111827', borderColor: '#374151', color: '#fff' }} />
@@ -159,25 +165,23 @@ export const EnterpriseDashboard = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/60">
-              {projects.map((p) => (
+              {(Array.isArray(projects) ? projects : []).map((p) => (
                 <tr key={p.id} className="hover:bg-gray-800/30 transition">
                   <td className="p-3 font-semibold text-gray-100">{p.name}</td>
                   <td className="p-3">{p.department}</td>
                   <td className="p-3">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      p.priority === 'Critical' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${p.priority === 'Critical' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
                       p.priority === 'High' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                      'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
-                    }`}>
+                        'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
+                      }`}>
                       {p.priority}
                     </span>
                   </td>
                   <td className="p-3">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                      p.status === 'Completed' ? 'text-emerald-400 bg-emerald-500/10' :
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${p.status === 'Completed' ? 'text-emerald-400 bg-emerald-500/10' :
                       p.status === 'Delayed' ? 'text-red-400 bg-red-500/10' :
-                      'text-indigo-400 bg-indigo-500/10'
-                    }`}>
+                        'text-indigo-400 bg-indigo-500/10'
+                      }`}>
                       {p.status}
                     </span>
                   </td>

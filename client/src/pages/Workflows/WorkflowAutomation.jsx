@@ -22,7 +22,7 @@ export const WorkflowAutomation = () => {
   const fetchWorkflows = async () => {
     try {
       const res = await api.get('/workflows');
-      if (res.data.success) setWorkflows(res.data.workflows);
+      if (res.data?.success) setWorkflows(res.data.data?.workflows ?? res.data.workflows ?? []);
     } catch (err) {
       console.error('Error fetching workflows:', err);
     }

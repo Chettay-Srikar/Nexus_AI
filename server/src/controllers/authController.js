@@ -72,6 +72,26 @@ export const login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
+    // Ensure matching profile row exists in Supabase profiles table for foreign key integrity
+    const { data: syncedProfile } = await supabase
+      .from('profiles')
+      .upsert([
+        {
+          id: user.id || 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          email: user.email,
+          full_name: user.full_name || user.name || 'User',
+          role: user.role || 'Employee',
+          avatar_url: user.avatar_url,
+          password_hash: user.password_hash
+        }
+      ], { onConflict: 'email' })
+      .select()
+      .single();
+
+    if (syncedProfile) {
+      user = syncedProfile;
+    }
+
     await query(`INSERT INTO audit_logs (user_id, user_name, action, resource, details) VALUES (?, ?, ?, ?, ?);`, [
       user.id,
       user.full_name || user.name,
@@ -80,8 +100,16 @@ export const login = async (req, res) => {
       `User ${email} logged in successfully`
     ]);
 
+    console.log("JWT_SECRET used for SIGN:", JWT_SECRET);
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, department: user.department || user.department_id },
+      {
+        id: user.id,
+        name: user.full_name || user.name,
+        email: user.email,
+        role: user.role,
+        department: user.department || user.department_id || 'Engineering',
+        avatar_url: user.avatar_url
+      },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -95,7 +123,7 @@ export const login = async (req, res) => {
           name: user.full_name || user.name,
           email: user.email,
           role: user.role,
-          department: user.department || 'Engineering',
+          department: user.department || user.department_id || 'Engineering',
           avatar_url: user.avatar_url
         }
       }
@@ -153,7 +181,14 @@ export const register = async (req, res) => {
     ]);
 
     const token = jwt.sign(
-      { id: createdUser.id, email: createdUser.email, role: createdUser.role, department: createdUser.department },
+      {
+        id: createdUser.id,
+        name: createdUser.full_name || name,
+        email: createdUser.email,
+        role: createdUser.role,
+        department: createdUser.department || department,
+        avatar_url: createdUser.avatar_url
+      },
       JWT_SECRET,
       { expiresIn: '7d' }
     );

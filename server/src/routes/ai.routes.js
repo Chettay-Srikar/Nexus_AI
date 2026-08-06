@@ -6,8 +6,8 @@ import {
   analyzeProject, 
   prioritizeTasks, 
   generateExecutiveReport 
-} from '../controllers/ai.controller.js';
-import { authenticate } from '../middleware/auth.middleware.js';
+} from '../controllers/aiController.js';
+import { authenticate } from '../middleware/auth.js';
 import { aiRateLimiter } from '../middleware/rateLimiter.middleware.js';
 import { aiSecurityFilter } from '../middleware/aiSecurity.middleware.js';
 

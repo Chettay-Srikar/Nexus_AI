@@ -139,7 +139,7 @@ export const ProjectManager = () => {
 
   const exportProjectsCSV = () => {
     const headers = ['ID,Name,Department,Priority,Status,Risk Score,Budget\n'];
-    const rows = projects.map(p => `${p.id},"${p.name}",${p.department},${p.priority},${p.status},${p.risk_score},${p.budget}\n`);
+    const rows = (Array.isArray(projects) ? projects : []).map(p => `${p.id},"${p.name}",${p.department},${p.priority},${p.status},${p.risk_score},${p.budget}\n`);
     const blob = new Blob([...headers, ...rows], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -148,8 +148,8 @@ export const ProjectManager = () => {
     a.click();
   };
 
-  const filteredProjects = projects.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.description?.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredProjects = (Array.isArray(projects) ? projects : []).filter(p => {
+    const matchesSearch = (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (p.description || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesDept = selectedDept === 'All' || p.department === selectedDept;
     const matchesPriority = selectedPriority === 'All' || p.priority === selectedPriority;
     return matchesSearch && matchesDept && matchesPriority;

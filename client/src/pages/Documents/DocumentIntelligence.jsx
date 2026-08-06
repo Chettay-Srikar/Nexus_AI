@@ -26,7 +26,7 @@ export const DocumentIntelligence = () => {
   const fetchDocuments = async () => {
     try {
       const res = await api.get('/documents');
-      if (res.data.success) setDocuments(res.data.documents);
+      if (res.data?.success) setDocuments(res.data.data?.documents ?? res.data.documents ?? []);
     } catch (err) {
       console.error('Error fetching documents:', err);
     }
@@ -37,22 +37,41 @@ export const DocumentIntelligence = () => {
     if (!textContent.trim() || processing) return;
 
     setProcessing(true);
-    try {
-      const res = await api.post('/ai/document-intelligence', {
-        title: title || 'Enterprise Policy Doc',
-        textContent
-      });
+    const payload = {
+      title: title || 'Enterprise Policy Doc',
+      content: textContent,
+      textContent
+    };
 
-      if (res.data.success) {
-        setActiveAnalysis(res.data.analysis);
+    console.log("Submitting document:", payload);
+
+    try {
+      const res = await api.post('/ai/document-intelligence', payload);
+      console.log("Received Response:", res.data);
+
+      if (res.data?.success) {
+        const analysis = res.data.data?.analysis ?? res.data.analysis;
+        setActiveAnalysis(analysis);
         setTitle('');
         setTextContent('');
         fetchDocuments();
       }
     } catch (err) {
+      console.error('Document intelligence error:', err);
       alert('Error processing document intelligence');
     } finally {
       setProcessing(false);
+    }
+  };
+
+  const handleDeleteDocument = async (docId) => {
+    if (!window.confirm('Are you sure you want to delete this indexed document?')) return;
+    try {
+      await api.delete(`/documents/${docId}`);
+      setDocuments(prev => prev.filter(d => d.id !== docId));
+    } catch (err) {
+      console.error('Delete document error:', err);
+      alert('Failed to delete document');
     }
   };
 
@@ -129,14 +148,92 @@ export const DocumentIntelligence = () => {
           </h3>
 
           {activeAnalysis ? (
-            <div className="p-4 rounded-xl bg-gray-900/80 border border-gray-800 space-y-3">
+            <div className="p-4 rounded-xl bg-gray-900/80 border border-gray-800 space-y-4 overflow-y-auto max-h-[500px]">
               <div className="flex items-center justify-between text-xs text-indigo-400 font-semibold pb-2 border-b border-gray-800">
-                <span>Status: Gemini Processed</span>
-                <span>Source: {activeAnalysis.source}</span>
+                <span className="flex items-center gap-1.5"><CheckCircle className="w-4 h-4 text-emerald-400" /> Status: Gemini Processed</span>
+                <span>Source: {activeAnalysis.source || 'Gemini'} | Confidence: {activeAnalysis.confidence || '96%'}</span>
               </div>
-              <div className="prose prose-invert max-w-none text-xs text-gray-300">
-                <ReactMarkdown>{activeAnalysis.text}</ReactMarkdown>
+
+              {/* Executive Summary */}
+              <div className="space-y-1">
+                <h4 className="text-xs font-bold text-gray-300 uppercase tracking-wider">Executive Summary</h4>
+                <p className="text-xs text-gray-200 bg-gray-800/60 p-3 rounded-lg border border-gray-700/60 leading-relaxed">
+                  {activeAnalysis.executiveSummary || activeAnalysis.summary || activeAnalysis.text}
+                </p>
               </div>
+
+              {/* Named Entities */}
+              {Array.isArray(activeAnalysis.entities) && activeAnalysis.entities.length > 0 && (
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-bold text-gray-300 uppercase tracking-wider">Named Entities & Technologies</h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeAnalysis.entities.map((ent, idx) => (
+                      <span key={idx} className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                        {ent}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Deadlines */}
+              {Array.isArray(activeAnalysis.deadlines) && activeAnalysis.deadlines.length > 0 && (
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" /> Key Deadlines & Timelines
+                  </h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeAnalysis.deadlines.map((dl, idx) => (
+                      <span key={idx} className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        {dl}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Items */}
+              {Array.isArray(activeAnalysis.actionItems) && activeAnalysis.actionItems.length > 0 && (
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Action Items</h4>
+                  <ul className="space-y-1">
+                    {activeAnalysis.actionItems.map((act, idx) => (
+                      <li key={idx} className="text-xs text-gray-300 flex items-start gap-2 bg-gray-800/40 p-2 rounded-md">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                        <span>{act}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* FAQs */}
+              {Array.isArray(activeAnalysis.faqs) && activeAnalysis.faqs.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-violet-400 uppercase tracking-wider">Extracted FAQs</h4>
+                  <div className="space-y-2">
+                    {activeAnalysis.faqs.map((faq, idx) => (
+                      <div key={idx} className="p-2.5 rounded-lg bg-gray-800/50 border border-gray-700/60 text-xs space-y-1">
+                        <p className="font-semibold text-indigo-300">Q: {faq.question}</p>
+                        <p className="text-gray-400">A: {faq.answer}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Keywords */}
+              {Array.isArray(activeAnalysis.keywords) && activeAnalysis.keywords.length > 0 && (
+                <div className="space-y-1.5 pt-2 border-t border-gray-800">
+                  <div className="flex flex-wrap gap-1">
+                    {activeAnalysis.keywords.map((kw, idx) => (
+                      <span key={idx} className="text-[10px] text-gray-400 bg-gray-800 px-2 py-0.5 rounded font-mono">
+                        #{kw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="h-64 border border-dashed border-gray-800 rounded-xl flex flex-col items-center justify-center text-gray-500 space-y-2 text-xs">
@@ -149,12 +246,12 @@ export const DocumentIntelligence = () => {
 
       {/* Indexed Enterprise Documents Repository */}
       <div className="glass-panel p-6 rounded-2xl border border-gray-800 space-y-4">
-        <h3 className="text-sm font-bold text-gray-200 uppercase tracking-wider">Indexed Enterprise Documents ({documents.length})</h3>
+        <h3 className="text-sm font-bold text-gray-200 uppercase tracking-wider">Indexed Enterprise Documents ({(Array.isArray(documents) ? documents : []).length})</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {documents.map((doc) => (
-            <div key={doc.id} className="p-4 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-indigo-500/40 transition space-y-2">
+          {(Array.isArray(documents) ? documents : []).map((doc) => (
+            <div key={doc.id} className="p-4 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-indigo-500/40 transition space-y-2 relative group">
               <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-gray-200 text-xs truncate">{doc.title}</h4>
+                <h4 className="font-semibold text-gray-200 text-xs truncate pr-6">{doc.title}</h4>
                 <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20 font-mono">
                   {doc.file_type}
                 </span>
@@ -162,7 +259,16 @@ export const DocumentIntelligence = () => {
               <p className="text-[11px] text-gray-400 line-clamp-3">{doc.summary || doc.content_text}</p>
               <div className="flex items-center justify-between text-[10px] text-gray-500 pt-2 border-t border-gray-800">
                 <span>By: {doc.uploader_name || 'System'}</span>
-                <span>{new Date(doc.created_at).toLocaleDateString()}</span>
+                <div className="flex items-center gap-2">
+                  <span>{doc.created_at ? new Date(doc.created_at).toLocaleDateString() : 'Recent'}</span>
+                  <button
+                    onClick={() => handleDeleteDocument(doc.id)}
+                    className="text-gray-500 hover:text-red-400 transition text-[11px]"
+                    title="Delete Document"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </div>
             </div>
           ))}

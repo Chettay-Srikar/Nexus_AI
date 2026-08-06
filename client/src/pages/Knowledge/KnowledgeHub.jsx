@@ -22,7 +22,10 @@ export const KnowledgeHub = () => {
   const fetchKnowledge = async () => {
     try {
       const res = await api.get('/knowledge');
-      if (res.data.success) setItems(res.data.items);
+      console.log("Knowledge API Response:", res.data);
+      const data = res.data.data?.items ?? res.data.items ?? [];
+      setItems(data);
+      console.log("Knowledge State:", data);
     } catch (err) {
       console.error('Error fetching knowledge hub:', err);
     }
@@ -30,10 +33,10 @@ export const KnowledgeHub = () => {
 
   const categories = ['All', 'Security', 'Engineering', 'HR', 'Support'];
 
-  const filteredItems = items.filter(it => {
+  const filteredItems = (Array.isArray(items) ? items : []).filter(it => {
     const matchesCategory = selectedCategory === 'All' || it.category === selectedCategory;
-    const matchesSearch = it.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          it.content.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = (it.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          (it.content || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 

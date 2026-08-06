@@ -86,21 +86,23 @@ NexusAI is a production-ready, enterprise-grade AI Operating System designed to 
 
 ---
 
-## 🚀 6. Cloud Deployment Instructions
+## 🚀 6. Cloud Deployment Instructions (Vercel Monorepo)
 
-### Frontend Deployment (Vercel)
-1. Push repository to GitHub.
-2. Import project into Vercel dashboard setting root directory to `client`.
-3. Build Command: `npm run build` | Output Directory: `dist`.
-4. Add Environment Variable: `VITE_API_BASE_URL=https://your-backend-render-url.onrender.com/api`.
+### Unified Deployment (Vercel)
+1. Push the repository to GitHub.
+2. Import project into Vercel dashboard setting root directory to `./` (root).
+3. Build Command: `npm run build` | Output Directory: `client/dist`.
+4. Configure Environment Variables in Vercel:
+   - `DATABASE_URL`
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `GEMINI_API_KEY`
+   - `JWT_SECRET`
+   - `JWT_EXPIRES_IN`
 
-### Backend Deployment (Render)
-1. Import repository into Render dashboard as a Web Service setting root directory to `server`.
-2. Build Command: `npm install` | Start Command: `node src/server.js`.
-3. Add Environment Variables: `GEMINI_API_KEY`, `JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `CLIENT_URL`.
-
-### Database Deployment (Supabase PostgreSQL)
-1. Create a new project on Supabase.
+### Database Setup (Supabase PostgreSQL)
+1. Create a project on Supabase.
 2. Navigate to SQL Editor and run `server/src/database/migrations/001_initial_schema.sql`.
 3. Run seed script `server/src/database/seed.sql`.
 
